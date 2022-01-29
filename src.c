@@ -6,37 +6,38 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define MAX_NAME			  20 // Max name of a player
+#define MAX_NAME			20 // Max name of a player
 #define MAX_CARD_NAME		6 // The longest identifier is COLOR, its length is 0..5 + 1 space for '\0'
 #define MAX_COLOR_LEN		2 // Max length of color, i.e R,G,B,W are of length 1, we need extra slot for '\0'
-#define LEN_COLOR       5 // The length of the string 'COLOR'
+#define LEN_COLOR           5 // The length of the string 'COLOR'
 
 #define WIDTH_CARD			9 // The width of the card printed to the screen
 #define LENGTH_CARD			6 // The length of the card printed to the screen
 
-#define INIT_QUAN			  4 // The initial quantity of card for each player
+#define INIT_QUAN			4 // The initial quantity of card for each player
 #define FIRST_PLAYER		0 // The index of the first player
+#define INIT_HISTO          0
 
 // Tokens for each card, and one for indicating that the player drew a card from the deck.
-#define TOKEN_PLUS			  10 
-#define TOKEN_STOP			  11
+#define TOKEN_PLUS			10
+#define TOKEN_STOP			11
 #define TOKEN_CHANGE_DIR	12
-#define TOKEN_TAKI			  13
+#define TOKEN_TAKI			13
 #define TOKEN_CHANGE_COL	14
-#define TOKEN_REG			    15
+#define TOKEN_REG			15
 #define TOKEN_FROM_DEC		16
 
 // Enumeration for each color
 #define COLOR_Y			    1
-#define COLOR_R				  2
-#define COLOR_B				  3
-#define COLOR_G				  4
+#define COLOR_R				2
+#define COLOR_B				3
+#define COLOR_G				4
 
 // String literals for each type of card available in the game
-#define STR_PLUS			    "+"
-#define STR_STOP			    "STOP"
+#define STR_PLUS			"+"
+#define STR_STOP			"STOP"
 #define STR_CHANGE_DIR		"<->"
-#define STR_TAKI			    "TAKI"
+#define STR_TAKI			"TAKI"
 #define STR_CHANGE_COL		"COLOR"
 
 // Char identifiers for each card number and the first letter of each type
@@ -59,9 +60,24 @@
 #define NO_COLOR			'\0' // Used when the color card is initialized, it has no color, used in the prinitng function for printing blank
 #define NULL_CHAR			'\0' // String termination char
 
-#define ERROR_OK			  0 // The operation succeeded 
+#define ERROR_OK			0 // The operation succeeded
 #define ERROR_INVALID		1 // The opeartion failed
 #define CARDS_RANGE			14 // 1 - 9, TAKI, <->, +, COLOR, STOP
+
+#define CASE_CARD_1 0
+#define CASE_CARD_2 1
+#define CASE_CARD_3 2
+#define CASE_CARD_4 3
+#define CASE_CARD_5 4
+#define CASE_CARD_6 5
+#define CASE_CARD_7 6
+#define CASE_CARD_8 7
+#define CASE_CARD_9 8
+#define CASE_CARD_10 9
+#define CASE_CARD_11 10
+#define CASE_CARD_12 11
+#define CASE_CARD_13 12
+#define CASE_CARD_14 13
 
 // Typedefs for making the code a bit more redable, regarding the return type of several functions
 typedef int errorCode;
@@ -423,7 +439,7 @@ token makeAMove(GameInfo* info, Player* player)
     // Player* player - A pointer to the current player.
     // Return value - A token identifing the players 'move'
 
-    int choice;
+    int choice, fromDeck = 0;
     token tokenType = TOKEN_REG;
 
     printf("Please enter 0 if you want to take a card from the deck\nor 1 - %d"
@@ -439,7 +455,7 @@ token makeAMove(GameInfo* info, Player* player)
     }
 
     // If the user drew a card from the deck we will enter this branch.
-    if (choice == 0) {
+    if (choice == fromDeck) {
         // Verify wether the capacity of the deck need to be reallocated
         if (player->handCapacity < player->handSize + 1)
             player->deck = deckRealloc(player, player->handCapacity * 2);
@@ -516,13 +532,13 @@ void changeGameState(GameInfo* info, Player* player, token tokenType, bool* isWi
     // token tokenType - The current token of the top card.
     // bool* isWinned - Pointer to the 'isGameOver' variable in the game loop function.
 
-
     // Dispatching to the correct handler based on the token of the top card.
     switch (tokenType) {
     case TOKEN_PLUS:
         if (player->handSize == 0) {
             makePlayerCard(player->deck, getRandInRange(CARDS_RANGE));
             (player->handSize)++;
+            *isWinner = false;
             incHistogram(info, &player->deck[player->handSize - 1]);
             break;
         }
@@ -533,23 +549,45 @@ void changeGameState(GameInfo* info, Player* player, token tokenType, bool* isWi
         if (info->numOfPlayers == 1)
             return; // We dont need to do anything
         // Regular handler
-        if (info->numOfPlayers == 2 && player->handSize == 1) {
+        if (info->numOfPlayers == 2 && player->handSize == 0) {
             makePlayerCard(player->deck, getRandInRange(CARDS_RANGE));
+            *isWinner = false;
+            (player->handSize)++;
+            rotationHandler(info);
         }
         else {
+            checkIfWinner(player, isWinner);
+            if (*isWinner == true) {
+                return;
+            }
             rotationHandler(info);
             rotationHandler(info);
         }
         return;
     case TOKEN_CHANGE_DIR:
+        checkIfWinner(player, isWinner);
+        if (*isWinner == true) {
+            return;
+        }
+
         // Changing the rotation using a ternary operator.
         // If the rotation is true, change it to false, else change to true.
         info->rotation = (info->rotation == true) ? false : true;
         break;
     case TOKEN_CHANGE_COL:
+        checkIfWinner(player, isWinner);
+        if (*isWinner == true) {
+            return;
+        }
+
         setNewTopColor(&info->topCard);
         break;
     case TOKEN_TAKI:
+        checkIfWinner(player, isWinner);
+        if (*isWinner == true) {
+            return;
+        }
+
         takiHandler(info, player, isWinner);
         return;
     }
@@ -563,7 +601,7 @@ void rotationHandler(GameInfo* info)
 
     if (info->rotation == true) { // Clockwise
         if (info->currentlyPlaying + 1 == info->numOfPlayers) {
-            info->currentlyPlaying = 0;
+            info->currentlyPlaying = FIRST_PLAYER;
         }
         else
             (info->currentlyPlaying)++;
@@ -602,14 +640,19 @@ void takiHandler(GameInfo* info, Player* player, bool* isWinner)
 
     int idx;
     char takiColour = info->topCard.colour; // Copy of the top cards colour.
-    token returnedToken; // For storing the value returned from 'makeAMove'.
+    token returnedToken, prevToken = TOKEN_FROM_DEC; // For storing the value returned from 'makeAMove'.
+
+    checkIfWinner(player, isWinner);
+    if (*isWinner == true)
+        return;
 
     while ((returnedToken = makeAMove(info, player)) != TOKEN_FROM_DEC && returnedToken != TOKEN_CHANGE_COL) {
         idx = player->handSize;
+        prevToken = returnedToken;
         checkIfWinner(player, isWinner);
 
-        if (*isWinner == true && returnedToken != TOKEN_PLUS) {
-            return;
+        if (*isWinner == true) {
+            break;
         }
 
         if (validateMoveOnTaki(info, takiColour) == ERROR_INVALID) {
@@ -623,9 +666,15 @@ void takiHandler(GameInfo* info, Player* player, bool* isWinner)
             updateScreen(info, player);
         }
     }
-    // Instead of creating another function for handling each top card placed at the end of the TAKI
-    // we can make a recursive call (we are already in the call chain of changeGameState) to the changeGameState to update the gameInfo accordingly.
-    changeGameState(info, player, returnedToken, isWinner);
+
+    if (returnedToken == TOKEN_CHANGE_COL) {
+        changeGameState(info, player, returnedToken, isWinner);
+    }
+    else {
+        // Instead of creating another function for handling each top card placed at the end of the TAKI
+        // we can make a recursive call (we are already in the call chain of changeGameState) to the changeGameState to update the gameInfo accordingly.
+        changeGameState(info, player, prevToken, isWinner);
+    }
 }
 
 void checkIfWinner(Player* player, bool* isGameOver)
@@ -650,7 +699,7 @@ void gameLoop(GameInfo* info, Player* players)
 
     printf("\n");
 
-    info->currentlyPlaying = 0;
+    info->currentlyPlaying = FIRST_PLAYER;
     info->rotation = true;
 
     // The actual loop of the game.
@@ -764,7 +813,7 @@ void initHistogram(GameInfo* info)
                 break;
             }
         }
-        info->histogram[i].count = 0;
+        info->histogram[i].count = INIT_HISTO;
     }
 }
 
@@ -778,35 +827,33 @@ int returnCardIndex(Card* card)
 
     switch (type) {
     case CARD_1:
-        return 0;
+        return CASE_CARD_1;
     case CARD_2:
-        return 1;
+        return CASE_CARD_2;
     case CARD_3:
-        return 2;
+        return CASE_CARD_3;
     case CARD_4:
-        return 3;
+        return CASE_CARD_4;
     case CARD_5:
-        return 4;
+        return CASE_CARD_5;
     case CARD_6:
-        return 5;
+        return CASE_CARD_6;
     case CARD_7:
-        return 6;
+        return CASE_CARD_7;
     case CARD_8:
-        return 7;
+        return CASE_CARD_8;
     case CARD_9:
-        return 8;
+        return CASE_CARD_9;
     case CARD_PLUS:
-        return 9;
+        return CASE_CARD_10;
     case CARD_STOP:
-        return 10;
+        return CASE_CARD_11;
     case CARD_CH_DIR:
-        return 11;
+        return CASE_CARD_12;
     case CARD_TAKI:
-        return 12;
+        return CASE_CARD_13;
     case CARD_CH_COL:
-        return 13;
-    default:
-        return -1;
+        return CASE_CARD_14;
     }
 }
 
